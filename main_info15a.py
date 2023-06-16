@@ -8,6 +8,9 @@ import torchvision
 import sys, os
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+from tensorflow import keras
+
+categorie_name = ['bag', 'bottle', 'candle', 'cap', 'glass', 'glasses', 'hat', 'laptop', 'pencil_case', 'phone', 'shoe', 'speaker', 'teddy_bear']
 
 def conv_xyxy_to_cxcywh(image, xyxy):
     center_x = ((xyxy[0] + xyxy[2]) / 2) / image.shape[1]
@@ -16,15 +19,26 @@ def conv_xyxy_to_cxcywh(image, xyxy):
     h = (xyxy[3] - xyxy[1]) / image.shape[0]
     return [center_x, center_y, w, h]
 
-def estimate_w_h(object_image, object_distance, scale_distance=123., scale_size_px=52., scale_size_cm=10.):
+def estimate_w_h(object_image, object_distance, scale_distance=119.5, scale_size_px=103.5, scale_size_cm=20.):#scale_distance=123., scale_size_px=52., scale_size_cm=10
     w = (object_distance / scale_distance) * (scale_size_cm / scale_size_px) * object_image.shape[0]
     h = (object_distance / scale_distance) * (scale_size_cm / scale_size_px) * object_image.shape[1]
-    return round(w, 2), round(h, 2)
+    return round(w, 1), round(h, 1)
 
 def cut_box_cv2_image(image, box):
     box = box.astype(int)
     cropped_image = image[box[0]:box[2], box[1]:box[3]]
     return cropped_image
+
+def wh_to_xyz_for_pred(wh):
+    return np.array([wh[0], wh[0], wh[1]])
+
+def encode_class_for_pred(yolo_categorie):
+    array_categorie = np.zeros(len(categorie_name))
+    array_categorie[yolo_categorie] = 1.
+    return array_categorie
+
+def get_info_object_i():
+    return None
 
 try:
     # Create a context object. This object owns the handles to all connected realsense devices
@@ -61,7 +75,8 @@ try:
 
     #print(config)
 
-    model = YOLO('yolov8n.pt')
+    model_yolo = YOLO('/home/user/yolo_fork/yolov8_projet_E3_esiee/runs/detect/train/weights/best.pt')
+    model_reg_poids = keras.models.load_model('./keras_regresseur_saves/keras_regresseur_3_13/')
 
     while True:
         # This call waits until a new coherent set of frames is available on a device
@@ -88,10 +103,10 @@ try:
         depth_image = np.asanyarray(depth_frame.get_data())
         color_image = np.asanyarray(color_frame.get_data())
         
-        results = model(color_image, conf=0.5, show=False)
+        results_yolo = model_yolo(color_image, conf=0.5, show=False)
          
         objects = []
-        for result in results:
+        for result in results_yolo:
             for object in result.boxes.cpu():
                 classe = object.cls.numpy()[0]
                 prob = object.conf.numpy()[0]
@@ -100,27 +115,38 @@ try:
                                 'classe':int(classe), 
                                 'proba':prob, 
                                 'box_xyxy':box_xyxy, 
-                                'box_cxcywh':conv_xyxy_to_cxcywh(color_image, box_xyxy)
+                                'box_cxcywh':conv_xyxy_to_cxcywh(color_image, box_xyxy),
+                                'start_point':(box_xyxy[0].astype(int), box_xyxy[1].astype(int)),
+                                'end_point':(box_xyxy[2].astype(int), box_xyxy[3].astype(int)),
                                 })
-        
 
         if len(objects) != 0:
-            start_point = (objects[0]['box_xyxy'][0].astype(int), objects[0]['box_xyxy'][1].astype(int))
-            end_point = (objects[0]['box_xyxy'][2].astype(int), objects[0]['box_xyxy'][3].astype(int))
-            center = ((objects[0]['box_cxcywh'][0]*color_image.shape[1]).astype(int), (objects[0]['box_cxcywh'][1]*color_image.shape[0]).astype(int))
-            #print(center)
-            dist_obj_cm = round(depth_frame.get_distance(center[0], center[1])*100, 2)
-            cuted_object = cut_box_cv2_image(color_image, objects[0]['box_xyxy'])
-            print(cuted_object.shape)
-            obj_w_h = estimate_w_h(cuted_object, dist_obj_cm)
-            print(obj_w_h)
+            xyz_for_preds = []
+            class_for_preds = []
+            for i in range(len(objects)):
+                center = ((objects[i]['box_cxcywh'][0]*color_image.shape[1]).astype(int), (objects[i]['box_cxcywh'][1]*color_image.shape[0]).astype(int))
+                
+                dist_obj_cm = round(depth_frame.get_distance(center[0], center[1])*100, 2)
+                cuted_object = cut_box_cv2_image(color_image, objects[i]['box_xyxy'])
+                obj_w_h = estimate_w_h(cuted_object, dist_obj_cm)
 
-            color_image_with_box = cv2.rectangle(color_image, start_point, end_point, (255,255,0), 2) 
-            color_image_with_circle = cv2.circle(color_image_with_box, center, 5, (0,0,255), 2)
-            dimension_string = '' + str(obj_w_h[0]) + '*' + str(obj_w_h[1]) + 'cm, width*height'
-            printed_string = objects[0]['name'] + ', ' + str(dist_obj_cm) + " cm"
-            cv2.putText(color_image_with_circle, printed_string, (start_point[0], end_point[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36,255,12), 2)
-            cv2.putText(color_image_with_circle, dimension_string, (start_point[0], end_point[1]+30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36,255,12), 2)
+                xyz_for_preds.append(wh_to_xyz_for_pred(obj_w_h))
+                class_for_preds.append(encode_class_for_pred(objects[i]['classe']))
+
+            poids_pred = model_reg_poids.predict([np.array(xyz_for_preds), np.array(class_for_preds)], verbose='None')
+
+            for i in range(len(objects)):
+                cv2.rectangle(color_image, objects[i]["start_point"], objects[i]["end_point"], (0,0,255), 2)
+                cv2.circle(color_image, center, 5, (255,255,0), 2)
+            
+                dimension_string = '' + str(obj_w_h[0]) + ' * ' + str(obj_w_h[1]) + ' cm'
+                cv2.putText(color_image, dimension_string, (objects[i]["end_point"][0]+5, objects[i]["end_point"][1]-35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,0), 2)
+                #cv2.putText(color_image_with_circle, 'width * height', (end_point[0]+5, end_point[1]-5), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255,255,0), 2)
+
+                class_string = objects[i]['name'] + ' ' + str(round(objects[i]['proba'], 2)) #+ ', ' + str(dist_obj_cm) + " cm"
+                cv2.putText(color_image, class_string, (objects[i]["end_point"][0]+5, objects[i]["start_point"][1]+25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,0,255), 2) #(start_point[0], end_point[1]-10)
+            
+                cv2.putText(color_image, str(round(poids_pred[i][0], 0)) + ' g', (objects[i]["start_point"][0], objects[i]["end_point"][1]+30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36,255,12), 2)
 
         # au prof jsp à quoi ça sert
         #coverage = [0] * 64
@@ -129,7 +155,6 @@ try:
         #        dist = depth_frame.get_distance(x, y)
         #        if 0 < dist and dist < 1:
         #           coverage[x // 10] += 1
-
                     
 
         # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
@@ -140,7 +165,7 @@ try:
 
         # If depth and color resolutions are different, resize color image to match depth image for display
         if depth_colormap_dim != color_colormap_dim:
-            resized_color_image = cv2.resize(color_image_with_circle, dsize=(depth_colormap_dim[1], depth_colormap_dim[0]),
+            resized_color_image = cv2.resize(color_image, dsize=(depth_colormap_dim[1], depth_colormap_dim[0]),
                                              interpolation=cv2.INTER_AREA)
             images = np.hstack((resized_color_image, depth_colormap))
         else:

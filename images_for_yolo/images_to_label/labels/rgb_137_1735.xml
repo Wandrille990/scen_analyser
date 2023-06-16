@@ -1,0 +1,26 @@
+<annotation>
+	<folder>images_to_label</folder>
+	<filename>rgb_137_1735.jpg</filename>
+	<path>/home/user/images_for_yolo/images_to_label/rgb_137_1735.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>640</width>
+		<height>480</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>shoe</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>191</xmin>
+			<ymin>184</ymin>
+			<xmax>397</xmax>
+			<ymax>394</ymax>
+		</bndbox>
+	</object>
+</annotation>

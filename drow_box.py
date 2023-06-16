@@ -5,7 +5,7 @@ from torchvision.io import read_image
 from torchvision.utils import draw_bounding_boxes
 
 # read input image
-img = read_image('object_detection/image_test/bus.jpg')
+img = read_image('object_detection_15a/image_test/bus.jpg')
 
 # bounding box in (xmin, ymin, xmax, ymax) format
 # top-left point=(xmin, ymin), bottom-right point = (xmax, ymax)
@@ -22,4 +22,5 @@ img=draw_bounding_boxes(img, bbox, width=3, colors=(255,255,0))
 
 # transform it to PIL image and display
 img = torchvision.transforms.ToPILImage()(img)
+
 img.show()

@@ -22,7 +22,7 @@ def graph_draw(graph):
 
 
 #computer = wn.synset('book.n.02')
-test_word = wn.synset('candle.n.02')
+test_word = wn.synset('ball.n.01')
 #graph = hyponym_graph(computer)
 #print(computer.definition())
 print(test_word.definition())

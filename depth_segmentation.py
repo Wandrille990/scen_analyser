@@ -120,6 +120,7 @@ try:
                 if 0 < dist and dist < 1:
                     coverage[x // 10] += 1
 
+        
 
 
         cv2.waitKey(1)
